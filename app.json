@@ -23,9 +23,7 @@
         "foregroundImage": "./assets/images/logo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "output": "static",
@@ -36,7 +34,7 @@
       [
         "expo-image-picker",
         {
-            "photosPermission": "Permite que FrameARt acceda a las fotos que quieras enmarcar."
+          "photosPermission": "Permite que FrameARt acceda a las fotos que quieras enmarcar."
         }
       ],
       [
@@ -50,16 +48,14 @@
         {
           "backgroundColor": "#FFFFFF",
           "image": "./assets/images/logo.png",
-          "imageWidth": 220
+          "imageWidth": 500
         }
       ],
       [
         "expo-build-properties",
         {
           "android": {
-            "buildArchs": [
-              "arm64-v8a"
-            ],
+            "buildArchs": ["arm64-v8a"],
             "enableBundleCompression": true
           }
         }

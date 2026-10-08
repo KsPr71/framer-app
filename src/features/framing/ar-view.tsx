@@ -23,8 +23,11 @@ type ARStatus = 'checking' | 'scanning' | 'ready' | 'placed' | 'limited' | 'unsu
 type SceneAppProps = {
   calibrationFactor: number;
   designs: FrameDesign[];
+  editingEnabled: boolean;
   placementRequest: number;
+  selectedFrameId?: string;
   updateCurrentIndex: (index: number) => void;
+  updateSelectedFrameId: (id?: string) => void;
   updateStatus: (status: ARStatus) => void;
 };
 
@@ -39,6 +42,7 @@ ViroMaterials.createMaterials({
   'inner-bevel-shadow': { lightingModel: 'Constant', diffuseColor: 'rgba(0,0,0,0.22)', blendMode: 'Alpha' },
   'inner-bevel-highlight': { lightingModel: 'Constant', diffuseColor: 'rgba(255,255,255,0.16)', blendMode: 'Alpha' },
   'placement-guide': { lightingModel: 'Constant', diffuseColor: 'rgba(34, 133, 255, 0.28)', blendMode: 'Alpha', cullMode: 'None' },
+  'selection-outline': { lightingModel: 'Constant', diffuseColor: '#EC0AAF' },
 });
 
 export function ARView({ calibrationFactor, designs, onClose }: { calibrationFactor: number; designs: FrameDesign[]; onClose: () => void }) {
@@ -48,6 +52,8 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
   const [sessionKey, setSessionKey] = useState(0);
   const [navigatorMounted, setNavigatorMounted] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [editingEnabled, setEditingEnabled] = useState(false);
+  const [selectedFrameId, setSelectedFrameId] = useState<string>();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const currentDesign = designs[currentIndex] ?? designs[0];
 
@@ -83,6 +89,8 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
     setStatus('checking');
     setCurrentIndex(0);
     setPlacementRequest(0);
+    setEditingEnabled(false);
+    setSelectedFrameId(undefined);
     setSessionKey((current) => current + 1);
     setTimeout(() => setNavigatorMounted(true), 0);
   };
@@ -97,7 +105,7 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
           style={StyleSheet.absoluteFill}
           initialScene={{ scene: FrameARScene }}
           provider="none"
-          viroAppProps={{ calibrationFactor, designs, placementRequest, updateCurrentIndex: setCurrentIndex, updateStatus: setStatus }}
+          viroAppProps={{ calibrationFactor, designs, editingEnabled, placementRequest, selectedFrameId, updateCurrentIndex: setCurrentIndex, updateSelectedFrameId: setSelectedFrameId, updateStatus: setStatus }}
         />
       ) : (
         <View style={styles.fallback}>
@@ -119,9 +127,10 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
             <>
               {status !== 'placed' && <View pointerEvents="none" style={styles.reticle}><View style={styles.reticleHorizontal} /><View style={styles.reticleVertical} /><View style={styles.reticleDot} /></View>}
               <View style={styles.bottomPanel}>
-                <Text style={styles.instruction}>{statusMessage(status)}</Text>
+                <Text style={styles.instruction}>{status === 'placed' && editingEnabled ? selectedFrameId ? 'Arrastra el cuadro seleccionado por la pared. Toca otro cuadro para editarlo.' : 'Toca un cuadro para seleccionarlo y luego arrástralo por la pared.' : statusMessage(status)}</Text>
                 <Text style={styles.measure}>Cuadro {Math.min(currentIndex + 1, designs.length)} de {designs.length} · {currentDesign.size.label} · {currentDesign.thickness.label}</Text>
                 {status === 'ready' && <Pressable accessibilityRole="button" onPress={() => setPlacementRequest((current) => current + 1)} style={styles.placeButton}><Text style={styles.placeText}>Colocar aquí</Text></Pressable>}
+                {status === 'placed' && <Pressable accessibilityRole="button" onPress={() => { setEditingEnabled((current) => !current); setSelectedFrameId(undefined); }} style={[styles.placeButton, editingEnabled && styles.lockButton]}><Text style={[styles.placeText, editingEnabled && styles.lockText]}>{editingEnabled ? 'Bloquear posiciones' : 'Ajustar cuadros'}</Text></Pressable>}
                 <Pressable accessibilityRole="button" onPress={restart} style={styles.repositionButton}><Text style={styles.repositionText}>Reiniciar composición</Text></Pressable>
               </View>
             </>
@@ -191,21 +200,50 @@ function FrameARScene(props?: SceneProps) {
     }
   };
 
+  const selectFrame = (id: string) => {
+    if (app.editingEnabled) app.updateSelectedFrameId(id);
+  };
+
+  const moveFrame = (id: string, position: [number, number, number]) => {
+    if (!app.editingEnabled || app.selectedFrameId !== id) return;
+    setPlacedFrames((current) => current.map((item) => item.design.id === id ? { ...item, placement: { ...item.placement, position } } : item));
+  };
+
   return (
     <ViroARScene anchorDetectionTypes="PlanesVertical" onTrackingUpdated={onTrackingUpdated} onCameraARHitTest={onCameraARHitTest}>
       {!complete && guide && dimensions && <ViroNode position={guide.position} rotation={guide.rotation}><ViroBox width={dimensions.widthM} height={dimensions.heightM} length={0.006} materials={['placement-guide']} /></ViroNode>}
-      {placedFrames.map((item) => <ViroNode key={item.design.id} position={item.placement.position} rotation={item.placement.rotation}><FrameGeometry calibrationFactor={app.calibrationFactor} design={item.design} /></ViroNode>)}
+      {placedFrames.map((item) => {
+        const selected = app.editingEnabled && app.selectedFrameId === item.design.id;
+        const yaw = (item.placement.rotation[1] * Math.PI) / 180;
+        return (
+          <ViroNode
+            key={item.design.id}
+            position={item.placement.position}
+            rotation={item.placement.rotation}
+            onClick={() => selectFrame(item.design.id)}
+            {...(selected ? {
+              dragType: 'FixedToPlane' as const,
+              dragPlane: { planePoint: item.placement.position, planeNormal: [Math.sin(yaw), 0, Math.cos(yaw)] as [number, number, number], maxDistance: 10 },
+              onDrag: (position: [number, number, number]) => moveFrame(item.design.id, position),
+            } : {})}>
+            <FrameGeometry calibrationFactor={app.calibrationFactor} design={item.design} selected={selected} />
+          </ViroNode>
+        );
+      })}
     </ViroARScene>
   );
 }
 
-function FrameGeometry({ calibrationFactor, design }: { calibrationFactor: number; design: FrameDesign }) {
+function FrameGeometry({ calibrationFactor, design, selected = false }: { calibrationFactor: number; design: FrameDesign; selected?: boolean }) {
   const rawDimensions = orientedDimensions(design.size, design.orientation);
   const dimensions = { widthM: rawDimensions.widthM * calibrationFactor, heightM: rawDimensions.heightM * calibrationFactor };
   const border = design.thickness.widthM * calibrationFactor;
   const material = `frame-${design.frame.id}`;
   const depth = 0.018;
   const bevel = Math.min(border * 0.18, 0.006 * calibrationFactor);
+  const outerWidth = dimensions.widthM + border * 2;
+  const outerHeight = dimensions.heightM + border * 2;
+  const outline = 0.004;
   return (
     <ViroNode position={[0, 0, 0.012]}>
       <ViroImage source={{ uri: design.photoUri }} width={dimensions.widthM} height={dimensions.heightM} resizeMode={design.fit === 'cover' ? 'ScaleToFill' : 'ScaleToFit'} imageClipMode="ClipToBounds" />
@@ -217,6 +255,12 @@ function FrameGeometry({ calibrationFactor, design }: { calibrationFactor: numbe
       <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[-dimensions.widthM / 2 - bevel / 2, 0, 0.019]} materials={['inner-bevel-shadow']} />
       <ViroBox width={dimensions.widthM} height={bevel} length={0.004} position={[0, -dimensions.heightM / 2 - bevel / 2, 0.019]} materials={['inner-bevel-highlight']} />
       <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[dimensions.widthM / 2 + bevel / 2, 0, 0.019]} materials={['inner-bevel-highlight']} />
+      {selected && <>
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, outerHeight / 2 + outline / 2, 0.022]} materials={['selection-outline']} />
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, -outerHeight / 2 - outline / 2, 0.022]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[-outerWidth / 2 - outline / 2, 0, 0.022]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[outerWidth / 2 + outline / 2, 0, 0.022]} materials={['selection-outline']} />
+      </>}
     </ViroNode>
   );
 }
@@ -233,5 +277,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111113' }, fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 34, gap: 13 }, fallbackTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', textAlign: 'center' }, fallbackBody: { color: '#CFCAD0', fontSize: 15, lineHeight: 22, textAlign: 'center' }, retryButton: { marginTop: 10, backgroundColor: '#EC0AAF', paddingHorizontal: 20, paddingVertical: 13, borderRadius: 14 }, retryText: { color: '#FFF', fontWeight: '800' },
   overlay: { position: 'absolute', inset: 0, justifyContent: 'space-between', padding: 18, paddingTop: 54, paddingBottom: 34 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, overlayButton: { backgroundColor: 'rgba(22, 18, 14, 0.78)', paddingHorizontal: 15, paddingVertical: 11, borderRadius: 999 }, overlayButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' }, statusPill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(22, 18, 14, 0.78)', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 999 }, statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E5AD63' }, statusDotPlaced: { backgroundColor: '#78C57C' }, statusText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   reticle: { position: 'absolute', left: '50%', top: '50%', width: 54, height: 54, marginLeft: -27, marginTop: -27, alignItems: 'center', justifyContent: 'center' }, reticleHorizontal: { position: 'absolute', width: 54, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.9)' }, reticleVertical: { position: 'absolute', width: 2, height: 54, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.9)' }, reticleDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#237DE8', borderWidth: 2, borderColor: '#FFF' },
-  bottomPanel: { backgroundColor: 'rgba(17,17,19,0.9)', borderRadius: 20, padding: 17, gap: 8, borderWidth: 1, borderColor: 'rgba(236,10,175,0.5)' }, instruction: { color: '#FFF', fontSize: 14, lineHeight: 20, fontWeight: '600' }, measure: { color: '#CFCAD0', fontSize: 12, fontWeight: '700' }, placeButton: { marginTop: 4, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF', borderRadius: 13 }, placeText: { color: '#FFF', fontWeight: '900' }, repositionButton: { marginTop: 4, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', borderRadius: 13 }, repositionText: { color: '#171719', fontWeight: '800' },
+  bottomPanel: { backgroundColor: 'rgba(17,17,19,0.9)', borderRadius: 20, padding: 17, gap: 8, borderWidth: 1, borderColor: 'rgba(236,10,175,0.5)' }, instruction: { color: '#FFF', fontSize: 14, lineHeight: 20, fontWeight: '600' }, measure: { color: '#CFCAD0', fontSize: 12, fontWeight: '700' }, placeButton: { marginTop: 4, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF', borderRadius: 13 }, placeText: { color: '#FFF', fontWeight: '900' }, lockButton: { backgroundColor: '#FFF' }, lockText: { color: '#171719' }, repositionButton: { marginTop: 4, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', borderRadius: 13 }, repositionText: { color: '#171719', fontWeight: '800' },
 });

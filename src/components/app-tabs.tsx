@@ -10,13 +10,19 @@ export default function AppTabs() {
   return (
     <NativeTabs
       backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      iconColor={{ default: '#102CCC', selected: '#FFFFFF' }}
+      indicatorColor="#EC0AAF"
+      rippleColor="rgba(236, 10, 175, 0.14)"
+      titlePositionAdjustment={{ vertical: 2 }}
+      labelStyle={{
+        default: { color: colors.textSecondary },
+        selected: { color: '#171719', fontWeight: '800' },
+      }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Diseñar</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/vector.png')}
-          renderingMode="original"
+          renderingMode="template"
         />
       </NativeTabs.Trigger>
 
@@ -24,7 +30,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Acerca de</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/computadora.png')}
-          renderingMode="original"
+          renderingMode="template"
         />
       </NativeTabs.Trigger>
     </NativeTabs>

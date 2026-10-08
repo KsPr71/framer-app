@@ -8,6 +8,16 @@ const FEATURES = [
   ['03', 'Visualiza', 'Coloca los cuadros uno a uno y revisa la composición completa sobre la misma pared.'],
 ] as const;
 
+const TECHNOLOGIES = [
+  'Expo SDK 57',
+  'React Native 0.86',
+  'React 19',
+  'Expo Router',
+  'ViroReact',
+  'Google ARCore',
+  'TypeScript',
+] as const;
+
 export default function AboutScreen() {
   return (
     <View style={styles.screen}>
@@ -38,6 +48,26 @@ export default function AboutScreen() {
               <Text style={styles.privacyTitle}>Tus fotos permanecen en tu dispositivo</Text>
             </View>
             <Text style={styles.privacyBody}>FrameARt utiliza las imágenes seleccionadas localmente para crear la previsualización. No necesita enviarlas a un servidor.</Text>
+          </View>
+
+          <View style={styles.technologySection}>
+            <Text style={styles.sectionKicker}>TECNOLOGÍAS</Text>
+            <Text style={styles.sectionTitle}>Construida para experiencias móviles en realidad aumentada</Text>
+            <View style={styles.technologyGrid}>
+              {TECHNOLOGIES.map((technology) => (
+                <View key={technology} style={styles.technologyChip}>
+                  <View style={styles.technologyDot} />
+                  <Text style={styles.technologyText}>{technology}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.creatorCard}>
+            <Text style={styles.creatorKicker}>CREADO POR</Text>
+            <Text style={styles.creatorName}>Jorge A. Casares Delgado</Text>
+            <Text style={styles.companyName}>NOVADEV</Text>
+            <Text style={styles.creatorBody}>Diseño, desarrollo e integración de la experiencia FrameARt.</Text>
           </View>
 
           <View style={styles.infoRow}>
@@ -72,6 +102,18 @@ const styles = StyleSheet.create({
   privacyDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#EC0AAF' },
   privacyTitle: { flex: 1, color: '#FFF', fontSize: 16, fontWeight: '900' },
   privacyBody: { color: '#CFCAD0', fontSize: 14, lineHeight: 21 },
+  technologySection: { marginTop: 26 },
+  sectionKicker: { color: '#EC0AAF', fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
+  sectionTitle: { color: '#171719', fontSize: 21, lineHeight: 27, fontWeight: '900', marginTop: 7 },
+  technologyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 15 },
+  technologyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5DFE6' },
+  technologyDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#EC0AAF' },
+  technologyText: { color: '#3A363B', fontSize: 12, fontWeight: '800' },
+  creatorCard: { marginTop: 22, padding: 22, borderRadius: 24, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5DFE6' },
+  creatorKicker: { color: '#99939B', fontSize: 10, fontWeight: '900', letterSpacing: 1.8 },
+  creatorName: { color: '#171719', fontSize: 21, lineHeight: 27, fontWeight: '900', marginTop: 8 },
+  companyName: { color: '#EC0AAF', fontSize: 15, fontWeight: '900', letterSpacing: 1.6, marginTop: 3 },
+  creatorBody: { color: '#686269', fontSize: 13, lineHeight: 20, marginTop: 10 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, paddingHorizontal: 4 },
   infoRight: { alignItems: 'flex-end' },
   infoLabel: { color: '#99939B', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },

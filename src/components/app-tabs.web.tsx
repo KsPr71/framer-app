@@ -38,8 +38,8 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+        style={[styles.tabButtonView, isFocused && styles.selectedTab]}>
+        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'} style={isFocused && styles.selectedTabText}>
           {children}
         </ThemedText>
       </ThemedView>
@@ -78,6 +78,7 @@ export function CustomTabList(props: TabListProps) {
 const styles = StyleSheet.create({
   tabListContainer: {
     position: 'absolute',
+    bottom: 4,
     width: '100%',
     padding: Spacing.three,
     justifyContent: 'center',
@@ -104,6 +105,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  selectedTab: {
+    backgroundColor: '#EC0AAF',
+  },
+  selectedTabText: {
+    color: '#171719',
+    fontWeight: '800',
   },
   externalPressable: {
     flexDirection: 'row',

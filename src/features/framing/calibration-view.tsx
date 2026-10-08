@@ -9,7 +9,7 @@ import {
   type ViroCameraARHitTest,
 } from '@reactvision/react-viro';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const LETTER_WIDTH_M = 0.2159;
 const LETTER_HEIGHT_M = 0.2794;
@@ -50,12 +50,22 @@ export function CalibrationView({ initialFactor, onClose, onConfirm }: { initial
     };
   }, []);
 
-  const closeSafely = (save: boolean) => {
+  const closeSafely = (save: boolean, nextFactor = factor) => {
     if (closing) return;
     setClosing(true);
-    closeTimer.current = setTimeout(() => save ? onConfirm(factor) : onClose(), 250);
+    closeTimer.current = setTimeout(() => save ? onConfirm(nextFactor) : onClose(), 250);
   };
   const changeFactor = (delta: number) => setFactor((current) => Math.min(1.25, Math.max(0.75, Number((current + delta).toFixed(2)))));
+  const resetCalibration = () => {
+    Alert.alert(
+      'Borrar calibración',
+      'Se eliminará el ajuste actual y FrameARt volverá a utilizar la escala original del 100%.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Borrar', style: 'destructive', onPress: () => closeSafely(true, 1) },
+      ],
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -79,6 +89,11 @@ export function CalibrationView({ initialFactor, onClose, onConfirm }: { initial
               </>
             ) : (
               <Pressable disabled={!ready} onPress={() => setFixRequest((current) => current + 1)} style={[styles.primaryButton, !ready && styles.disabled]}><Text style={styles.primaryText}>Fijar referencia</Text></Pressable>
+            )}
+            {initialFactor !== 1 && (
+              <Pressable accessibilityRole="button" onPress={resetCalibration} style={styles.resetButton}>
+                <Text style={styles.resetButtonText}>Borrar calibración guardada</Text>
+              </Pressable>
             )}
           </View>
         </View>
@@ -144,5 +159,5 @@ function LetterGrid({ factor }: { factor: number }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111113' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#FFF', fontWeight: '700' }, overlay: { position: 'absolute', inset: 0, padding: 18, paddingTop: 54, paddingBottom: 34, justifyContent: 'space-between' }, topBar: { flexDirection: 'row', justifyContent: 'space-between' }, darkButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999, backgroundColor: 'rgba(15,15,17,0.82)' }, darkButtonText: { color: '#FFF', fontWeight: '800' }, badge: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 999, backgroundColor: '#EC0AAF' }, badgeText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 1 }, reticle: { position: 'absolute', left: '50%', top: '50%', width: 54, height: 54, marginLeft: -27, marginTop: -27, alignItems: 'center', justifyContent: 'center' }, crossH: { position: 'absolute', width: 54, height: 2, backgroundColor: '#FFF' }, crossV: { position: 'absolute', width: 2, height: 54, backgroundColor: '#FFF' }, dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EC0AAF', borderWidth: 2, borderColor: '#FFF' }, panel: { padding: 18, gap: 12, borderRadius: 22, backgroundColor: 'rgba(15,15,17,0.9)' }, panelTitle: { color: '#FFF', fontSize: 18, fontWeight: '900' }, panelBody: { color: '#D4CFD5', fontSize: 14, lineHeight: 20 }, adjustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22 }, adjustButton: { width: 52, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' }, adjustText: { color: '#171719', fontSize: 28, fontWeight: '700' }, factor: { minWidth: 70, color: '#FFF', textAlign: 'center', fontSize: 23, fontWeight: '900' }, primaryButton: { minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF' }, primaryText: { color: '#FFF', fontWeight: '900' }, disabled: { opacity: 0.4 },
+  container: { flex: 1, backgroundColor: '#111113' }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#FFF', fontWeight: '700' }, overlay: { position: 'absolute', inset: 0, padding: 18, paddingTop: 54, paddingBottom: 34, justifyContent: 'space-between' }, topBar: { flexDirection: 'row', justifyContent: 'space-between' }, darkButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999, backgroundColor: 'rgba(15,15,17,0.82)' }, darkButtonText: { color: '#FFF', fontWeight: '800' }, badge: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 999, backgroundColor: '#EC0AAF' }, badgeText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 1 }, reticle: { position: 'absolute', left: '50%', top: '50%', width: 54, height: 54, marginLeft: -27, marginTop: -27, alignItems: 'center', justifyContent: 'center' }, crossH: { position: 'absolute', width: 54, height: 2, backgroundColor: '#FFF' }, crossV: { position: 'absolute', width: 2, height: 54, backgroundColor: '#FFF' }, dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EC0AAF', borderWidth: 2, borderColor: '#FFF' }, panel: { padding: 18, gap: 12, borderRadius: 22, backgroundColor: 'rgba(15,15,17,0.9)' }, panelTitle: { color: '#FFF', fontSize: 18, fontWeight: '900' }, panelBody: { color: '#D4CFD5', fontSize: 14, lineHeight: 20 }, adjustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22 }, adjustButton: { width: 52, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' }, adjustText: { color: '#171719', fontSize: 28, fontWeight: '700' }, factor: { minWidth: 70, color: '#FFF', textAlign: 'center', fontSize: 23, fontWeight: '900' }, primaryButton: { minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF' }, primaryText: { color: '#FFF', fontWeight: '900' }, resetButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)' }, resetButtonText: { color: '#FFF', fontWeight: '800' }, disabled: { opacity: 0.4 },
 });
