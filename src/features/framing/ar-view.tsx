@@ -13,7 +13,7 @@ import {
   type ViroTrackingState,
 } from '@reactvision/react-viro';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { FrameDesign } from './catalog';
 import { orientedDimensions } from './catalog';
@@ -52,9 +52,11 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
   const [sessionKey, setSessionKey] = useState(0);
   const [navigatorMounted, setNavigatorMounted] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [editingEnabled, setEditingEnabled] = useState(false);
   const [selectedFrameId, setSelectedFrameId] = useState<string>();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const navigatorRef = useRef<ViroARSceneNavigator | null>(null);
   const currentDesign = designs[currentIndex] ?? designs[0];
 
   useEffect(() => {
@@ -96,11 +98,27 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
   };
 
   const canRenderAR = status === 'scanning' || status === 'ready' || status === 'placed' || status === 'limited';
+  const hasPlacedFrame = currentIndex > 0 || status === 'placed';
+
+  const captureComposition = async () => {
+    if (capturing || !navigatorRef.current) return;
+    setCapturing(true);
+    try {
+      const result = await navigatorRef.current.arSceneNavigator.takeScreenshot(`frameart-${Date.now()}`, true);
+      if (result?.success === false) throw new Error(`Viro screenshot error: ${result.errorCode ?? 'unknown'}`);
+      Alert.alert('Captura guardada', 'La composición se guardó en la galería del dispositivo.');
+    } catch {
+      Alert.alert('No se pudo guardar', 'Comprueba el acceso a fotos y vuelve a intentarlo.');
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
       {canRenderAR && navigatorMounted ? (
         <ViroARSceneNavigator
+          ref={navigatorRef}
           key={sessionKey}
           style={StyleSheet.absoluteFill}
           initialScene={{ scene: FrameARScene }}
@@ -120,7 +138,10 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
         <View pointerEvents="box-none" style={styles.overlay}>
           <View style={styles.topBar}>
             <Pressable accessibilityRole="button" onPress={closeSafely} style={styles.overlayButton}><Text style={styles.overlayButtonText}>‹ Volver</Text></Pressable>
-            <View style={styles.statusPill}><View style={[styles.statusDot, status === 'placed' && styles.statusDotPlaced]} /><Text style={styles.statusText}>{statusTitle(status)}</Text></View>
+            <View style={styles.topActions}>
+              {hasPlacedFrame && <Pressable accessibilityLabel="Guardar captura en la galería" accessibilityRole="button" disabled={capturing} onPress={captureComposition} style={[styles.captureButton, capturing && styles.captureButtonDisabled]}><View style={styles.cameraIcon}><View style={styles.cameraLens} /></View></Pressable>}
+              <View style={styles.statusPill}><View style={[styles.statusDot, status === 'placed' && styles.statusDotPlaced]} /><Text style={styles.statusText}>{statusTitle(status)}</Text></View>
+            </View>
           </View>
 
           {canRenderAR && currentDesign && (
@@ -275,7 +296,7 @@ function statusMessage(status: ARStatus) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111113' }, fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 34, gap: 13 }, fallbackTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', textAlign: 'center' }, fallbackBody: { color: '#CFCAD0', fontSize: 15, lineHeight: 22, textAlign: 'center' }, retryButton: { marginTop: 10, backgroundColor: '#EC0AAF', paddingHorizontal: 20, paddingVertical: 13, borderRadius: 14 }, retryText: { color: '#FFF', fontWeight: '800' },
-  overlay: { position: 'absolute', inset: 0, justifyContent: 'space-between', padding: 18, paddingTop: 54, paddingBottom: 34 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, overlayButton: { backgroundColor: 'rgba(22, 18, 14, 0.78)', paddingHorizontal: 15, paddingVertical: 11, borderRadius: 999 }, overlayButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' }, statusPill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(22, 18, 14, 0.78)', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 999 }, statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E5AD63' }, statusDotPlaced: { backgroundColor: '#78C57C' }, statusText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  overlay: { position: 'absolute', inset: 0, justifyContent: 'space-between', padding: 18, paddingTop: 54, paddingBottom: 34 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 }, overlayButton: { backgroundColor: 'rgba(22, 18, 14, 0.78)', paddingHorizontal: 15, paddingVertical: 11, borderRadius: 999 }, overlayButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' }, captureButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF', borderWidth: 2, borderColor: '#FFF' }, captureButtonDisabled: { opacity: 0.55 }, cameraIcon: { width: 22, height: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: '#FFF' }, cameraLens: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EC0AAF', borderWidth: 1, borderColor: '#B50787' }, statusPill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(22, 18, 14,0.78)', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 999 }, statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E5AD63' }, statusDotPlaced: { backgroundColor: '#78C57C' }, statusText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   reticle: { position: 'absolute', left: '50%', top: '50%', width: 54, height: 54, marginLeft: -27, marginTop: -27, alignItems: 'center', justifyContent: 'center' }, reticleHorizontal: { position: 'absolute', width: 54, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.9)' }, reticleVertical: { position: 'absolute', width: 2, height: 54, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.9)' }, reticleDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#237DE8', borderWidth: 2, borderColor: '#FFF' },
   bottomPanel: { backgroundColor: 'rgba(17,17,19,0.9)', borderRadius: 20, padding: 17, gap: 8, borderWidth: 1, borderColor: 'rgba(236,10,175,0.5)' }, instruction: { color: '#FFF', fontSize: 14, lineHeight: 20, fontWeight: '600' }, measure: { color: '#CFCAD0', fontSize: 12, fontWeight: '700' }, placeButton: { marginTop: 4, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF', borderRadius: 13 }, placeText: { color: '#FFF', fontWeight: '900' }, lockButton: { backgroundColor: '#FFF' }, lockText: { color: '#171719' }, repositionButton: { marginTop: 4, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', borderRadius: 13 }, repositionText: { color: '#171719', fontWeight: '800' },
 });
