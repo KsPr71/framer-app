@@ -51,7 +51,16 @@
         {
           "backgroundColor": "#FFFFFF",
           "image": "./assets/images/logo.png",
-          "imageWidth": 500
+          "imageWidth": 360,
+          "resizeMode": "contain",
+          "android": {
+            "imageWidth": 288,
+            "resizeMode": "contain"
+          },
+          "ios": {
+            "imageWidth": 420,
+            "resizeMode": "contain"
+          }
         }
       ],
       [
