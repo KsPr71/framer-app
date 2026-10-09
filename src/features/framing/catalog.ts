@@ -1,5 +1,6 @@
 export type Orientation = 'portrait' | 'landscape';
 export type ImageFit = 'cover' | 'contain';
+export type FrameModelId = 'fancy' | 'standing-01' | 'standing-02';
 
 export type SizePreset = {
   id: string;
@@ -15,6 +16,7 @@ export type FramePreset = {
   edgeColor: string;
   matColor?: string;
   borderRatio: number;
+  model?: FrameModelId;
 };
 
 export type FrameThicknessPreset = {
@@ -71,6 +73,31 @@ export const FRAME_PRESETS: FramePreset[] = [
     edgeColor: '#B8B5AE',
     borderRatio: 0.07,
   },
+  {
+    id: 'fancy-3d',
+    name: 'Ornamental 3D',
+    color: '#C3A15E',
+    edgeColor: '#71501E',
+    borderRatio: 0.075,
+    model: 'fancy',
+  },
+  {
+    id: 'standing-black-3d',
+    name: 'Moderno negro 3D',
+    color: '#242424',
+    edgeColor: '#090909',
+    matColor: '#F2F1EE',
+    borderRatio: 0.12,
+    model: 'standing-01',
+  },
+  {
+    id: 'standing-white-3d',
+    name: 'Madera blanca 3D',
+    color: '#E8E3DA',
+    edgeColor: '#A99D8E',
+    borderRatio: 0.16,
+    model: 'standing-02',
+  },
 ];
 
 export const FRAME_THICKNESS_PRESETS: FrameThicknessPreset[] = [
@@ -86,8 +113,41 @@ export function orientedDimensions(size: SizePreset, orientation: Orientation) {
     : { widthM: size.photoHeightM, heightM: size.photoWidthM };
 }
 
-export function outerDimensions(size: SizePreset, thickness: FrameThicknessPreset, orientation: Orientation) {
+export const FRAME_MODEL_DIMENSIONS: Record<FrameModelId, { nativeOrientation: Orientation; openingWidth: number; openingHeight: number; outerWidth: number; outerHeight: number }> = {
+  fancy: {
+    nativeOrientation: 'landscape',
+    openingWidth: 0.53937429189682,
+    openingHeight: 0.40028803050518036,
+    outerWidth: 0.603030264377594,
+    outerHeight: 0.46412645280361175,
+  },
+  'standing-01': {
+    nativeOrientation: 'portrait',
+    openingWidth: 0.13174070417881012,
+    openingHeight: 0.18531423062086105,
+    outerWidth: 0.2007998526096344,
+    outerHeight: 0.24965811520814896,
+  },
+  'standing-02': {
+    nativeOrientation: 'portrait',
+    openingWidth: 0.13522548973560333,
+    openingHeight: 0.18454795330762863,
+    outerWidth: 0.21689216047525406,
+    outerHeight: 0.2663925290107727,
+  },
+};
+
+export function outerDimensions(size: SizePreset, thickness: FrameThicknessPreset, orientation: Orientation, frame?: FramePreset) {
   const photo = orientedDimensions(size, orientation);
+
+  if (frame?.model) {
+    const model = FRAME_MODEL_DIMENSIONS[frame.model];
+    const rotated = orientation !== model.nativeOrientation;
+    return {
+      widthM: photo.widthM * (rotated ? model.outerHeight / model.openingHeight : model.outerWidth / model.openingWidth),
+      heightM: photo.heightM * (rotated ? model.outerWidth / model.openingWidth : model.outerHeight / model.openingHeight),
+    };
+  }
 
   return {
     widthM: photo.widthM + 2 * thickness.widthM,

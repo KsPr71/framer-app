@@ -1,12 +1,16 @@
 import {
   isARSupportedOnDevice,
   requestRequiredPermissions,
+  ViroAmbientLight,
   ViroARScene,
   ViroARSceneNavigator,
+  Viro3DObject,
   ViroBox,
+  ViroDirectionalLight,
   ViroImage,
   ViroMaterials,
   ViroNode,
+  ViroSpinner,
   ViroTrackingStateConstants,
   type ViroCameraARHitTest,
   type ViroTrackingReason,
@@ -15,8 +19,12 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import fancyFrameModel from '@/assets/models/fancy-textured.glb';
+import standingFrame01Model from '@/assets/models/standing-picture-frame-01.glb';
+import standingFrame02Model from '@/assets/models/standing-picture-frame-02.glb';
+
 import type { FrameDesign } from './catalog';
-import { orientedDimensions } from './catalog';
+import { FRAME_MODEL_DIMENSIONS, orientedDimensions, outerDimensions } from './catalog';
 
 type ARStatus = 'checking' | 'scanning' | 'ready' | 'placed' | 'limited' | 'unsupported' | 'denied' | 'error';
 
@@ -39,6 +47,9 @@ ViroMaterials.createMaterials({
   'frame-natural-oak': { diffuseColor: '#B98651', roughness: 0.72, metalness: 0 },
   'frame-gallery-black': { diffuseColor: '#1D1D1B', roughness: 0.52, metalness: 0.05 },
   'frame-classic-white': { diffuseColor: '#F0EEE7', roughness: 0.68, metalness: 0 },
+  'frame-side-natural-oak': { diffuseColor: '#70472B', roughness: 0.78, metalness: 0 },
+  'frame-side-gallery-black': { diffuseColor: '#080808', roughness: 0.62, metalness: 0.03 },
+  'frame-side-classic-white': { diffuseColor: '#B9B5AD', roughness: 0.76, metalness: 0 },
   'inner-bevel-shadow': { lightingModel: 'Constant', diffuseColor: 'rgba(0,0,0,0.22)', blendMode: 'Alpha' },
   'inner-bevel-highlight': { lightingModel: 'Constant', diffuseColor: 'rgba(255,255,255,0.16)', blendMode: 'Alpha' },
   'placement-guide': { lightingModel: 'Constant', diffuseColor: 'rgba(34, 133, 255, 0.28)', blendMode: 'Alpha', cullMode: 'None' },
@@ -149,7 +160,7 @@ export function ARView({ calibrationFactor, designs, onClose }: { calibrationFac
               {status !== 'placed' && <View pointerEvents="none" style={styles.reticle}><View style={styles.reticleHorizontal} /><View style={styles.reticleVertical} /><View style={styles.reticleDot} /></View>}
               <View style={styles.bottomPanel}>
                 <Text style={styles.instruction}>{status === 'placed' && editingEnabled ? selectedFrameId ? 'Arrastra el cuadro seleccionado por la pared. Toca otro cuadro para editarlo.' : 'Toca un cuadro para seleccionarlo y luego arrástralo por la pared.' : statusMessage(status)}</Text>
-                <Text style={styles.measure}>Cuadro {Math.min(currentIndex + 1, designs.length)} de {designs.length} · {currentDesign.size.label} · {currentDesign.thickness.label}</Text>
+                <Text style={styles.measure}>Cuadro {Math.min(currentIndex + 1, designs.length)} de {designs.length} · {currentDesign.size.label} · {currentDesign.frame.model ? 'Marco 3D' : currentDesign.thickness.label}</Text>
                 {status === 'ready' && <Pressable accessibilityRole="button" onPress={() => setPlacementRequest((current) => current + 1)} style={styles.placeButton}><Text style={styles.placeText}>Colocar aquí</Text></Pressable>}
                 {status === 'placed' && <Pressable accessibilityRole="button" onPress={() => { setEditingEnabled((current) => !current); setSelectedFrameId(undefined); }} style={[styles.placeButton, editingEnabled && styles.lockButton]}><Text style={[styles.placeText, editingEnabled && styles.lockText]}>{editingEnabled ? 'Bloquear posiciones' : 'Ajustar cuadros'}</Text></Pressable>}
                 <Pressable accessibilityRole="button" onPress={restart} style={styles.repositionButton}><Text style={styles.repositionText}>Reiniciar composición</Text></Pressable>
@@ -232,6 +243,8 @@ function FrameARScene(props?: SceneProps) {
 
   return (
     <ViroARScene anchorDetectionTypes="PlanesVertical" onTrackingUpdated={onTrackingUpdated} onCameraARHitTest={onCameraARHitTest}>
+      <ViroAmbientLight color="#FFF7E8" intensity={450} />
+      <ViroDirectionalLight color="#FFFFFF" direction={[-0.4, -0.6, -1]} intensity={250} />
       {!complete && guide && dimensions && <ViroNode position={guide.position} rotation={guide.rotation}><ViroBox width={dimensions.widthM} height={dimensions.heightM} length={0.006} materials={['placement-guide']} /></ViroNode>}
       {placedFrames.map((item) => {
         const selected = app.editingEnabled && app.selectedFrameId === item.design.id;
@@ -258,29 +271,185 @@ function FrameARScene(props?: SceneProps) {
 function FrameGeometry({ calibrationFactor, design, selected = false }: { calibrationFactor: number; design: FrameDesign; selected?: boolean }) {
   const rawDimensions = orientedDimensions(design.size, design.orientation);
   const dimensions = { widthM: rawDimensions.widthM * calibrationFactor, heightM: rawDimensions.heightM * calibrationFactor };
+  if (design.frame.model === 'fancy') {
+    return <FancyFrameGeometry calibrationFactor={calibrationFactor} design={design} dimensions={dimensions} selected={selected} />;
+  }
+  if (design.frame.model === 'standing-01' || design.frame.model === 'standing-02') {
+    return <StandingFrameGeometry calibrationFactor={calibrationFactor} design={design} dimensions={dimensions} selected={selected} />;
+  }
   const border = design.thickness.widthM * calibrationFactor;
   const material = `frame-${design.frame.id}`;
-  const depth = 0.018;
+  const sideMaterial = `frame-side-${design.frame.id}`;
+  const frontDepth = 0.006;
+  const frontZ = 0.002;
+  const bodyDepth = 0.018;
+  const bodyZ = -bodyDepth / 2 - 0.001;
   const bevel = Math.min(border * 0.18, 0.006 * calibrationFactor);
   const outerWidth = dimensions.widthM + border * 2;
   const outerHeight = dimensions.heightM + border * 2;
   const outline = 0.004;
   return (
     <ViroNode position={[0, 0, 0.012]}>
-      <ViroImage source={{ uri: design.photoUri }} width={dimensions.widthM} height={dimensions.heightM} resizeMode={design.fit === 'cover' ? 'ScaleToFill' : 'ScaleToFit'} imageClipMode="ClipToBounds" />
-      <ViroBox width={dimensions.widthM + border * 2} height={border} length={depth} position={[0, dimensions.heightM / 2 + border / 2, 0.009]} materials={[material]} />
-      <ViroBox width={dimensions.widthM + border * 2} height={border} length={depth} position={[0, -dimensions.heightM / 2 - border / 2, 0.009]} materials={[material]} />
-      <ViroBox width={border} height={dimensions.heightM} length={depth} position={[-dimensions.widthM / 2 - border / 2, 0, 0.009]} materials={[material]} />
-      <ViroBox width={border} height={dimensions.heightM} length={depth} position={[dimensions.widthM / 2 + border / 2, 0, 0.009]} materials={[material]} />
-      <ViroBox width={dimensions.widthM} height={bevel} length={0.004} position={[0, dimensions.heightM / 2 + bevel / 2, 0.019]} materials={['inner-bevel-shadow']} />
-      <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[-dimensions.widthM / 2 - bevel / 2, 0, 0.019]} materials={['inner-bevel-shadow']} />
-      <ViroBox width={dimensions.widthM} height={bevel} length={0.004} position={[0, -dimensions.heightM / 2 - bevel / 2, 0.019]} materials={['inner-bevel-highlight']} />
-      <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[dimensions.widthM / 2 + bevel / 2, 0, 0.019]} materials={['inner-bevel-highlight']} />
+      <ViroImage position={[0, 0, 0.006]} source={{ uri: design.photoUri }} width={dimensions.widthM} height={dimensions.heightM} resizeMode={design.fit === 'cover' ? 'ScaleToFill' : 'ScaleToFit'} imageClipMode="ClipToBounds" />
+      <ViroBox width={outerWidth} height={border} length={bodyDepth} position={[0, dimensions.heightM / 2 + border / 2, bodyZ]} materials={[sideMaterial]} />
+      <ViroBox width={outerWidth} height={border} length={bodyDepth} position={[0, -dimensions.heightM / 2 - border / 2, bodyZ]} materials={[sideMaterial]} />
+      <ViroBox width={border} height={dimensions.heightM} length={bodyDepth} position={[-dimensions.widthM / 2 - border / 2, 0, bodyZ]} materials={[sideMaterial]} />
+      <ViroBox width={border} height={dimensions.heightM} length={bodyDepth} position={[dimensions.widthM / 2 + border / 2, 0, bodyZ]} materials={[sideMaterial]} />
+      <ViroBox width={outerWidth} height={outerHeight} length={0.003} position={[0, 0, bodyZ - bodyDepth / 2 - 0.0015]} materials={[sideMaterial]} />
+      <ViroBox width={outerWidth} height={border} length={frontDepth} position={[0, dimensions.heightM / 2 + border / 2, frontZ]} materials={[material]} />
+      <ViroBox width={outerWidth} height={border} length={frontDepth} position={[0, -dimensions.heightM / 2 - border / 2, frontZ]} materials={[material]} />
+      <ViroBox width={border} height={dimensions.heightM} length={frontDepth} position={[-dimensions.widthM / 2 - border / 2, 0, frontZ]} materials={[material]} />
+      <ViroBox width={border} height={dimensions.heightM} length={frontDepth} position={[dimensions.widthM / 2 + border / 2, 0, frontZ]} materials={[material]} />
+      <ViroBox width={dimensions.widthM} height={bevel} length={0.004} position={[0, dimensions.heightM / 2 + bevel / 2, 0.008]} materials={['inner-bevel-shadow']} />
+      <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[-dimensions.widthM / 2 - bevel / 2, 0, 0.008]} materials={['inner-bevel-shadow']} />
+      <ViroBox width={dimensions.widthM} height={bevel} length={0.004} position={[0, -dimensions.heightM / 2 - bevel / 2, 0.008]} materials={['inner-bevel-highlight']} />
+      <ViroBox width={bevel} height={dimensions.heightM} length={0.004} position={[dimensions.widthM / 2 + bevel / 2, 0, 0.008]} materials={['inner-bevel-highlight']} />
       {selected && <>
-        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, outerHeight / 2 + outline / 2, 0.022]} materials={['selection-outline']} />
-        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, -outerHeight / 2 - outline / 2, 0.022]} materials={['selection-outline']} />
-        <ViroBox width={outline} height={outerHeight} length={0.004} position={[-outerWidth / 2 - outline / 2, 0, 0.022]} materials={['selection-outline']} />
-        <ViroBox width={outline} height={outerHeight} length={0.004} position={[outerWidth / 2 + outline / 2, 0, 0.022]} materials={['selection-outline']} />
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, outerHeight / 2 + outline / 2, 0.012]} materials={['selection-outline']} />
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, -outerHeight / 2 - outline / 2, 0.012]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[-outerWidth / 2 - outline / 2, 0, 0.012]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[outerWidth / 2 + outline / 2, 0, 0.012]} materials={['selection-outline']} />
+      </>}
+    </ViroNode>
+  );
+}
+
+const STANDING_MODELS = {
+  'standing-01': {
+    source: standingFrame01Model,
+    openingCenterY: (0.03236065059900284 + 0.2176748812198639) / 2,
+  },
+  'standing-02': {
+    source: standingFrame02Model,
+    openingCenterY: (0.039111651480197906 + 0.22365960478782654) / 2,
+  },
+} as const;
+
+function StandingFrameGeometry({ calibrationFactor, design, dimensions, selected }: { calibrationFactor: number; design: FrameDesign; dimensions: { widthM: number; heightM: number }; selected: boolean }) {
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
+  const modelId = design.frame.model as 'standing-01' | 'standing-02';
+  const asset = STANDING_MODELS[modelId];
+  const model = FRAME_MODEL_DIMENSIONS[modelId];
+  const portrait = design.orientation === 'portrait';
+  const widthScale = (portrait ? dimensions.widthM : dimensions.heightM) / model.openingWidth;
+  const heightScale = (portrait ? dimensions.heightM : dimensions.widthM) / model.openingHeight;
+  // These assets were authored as tabletop frames. Collapse their depth almost
+  // completely so the rear stand cannot protrude when viewed from an angle.
+  // A separate shallow box below provides the flat wall-frame backing.
+  const depthScale = ((widthScale + heightScale) / 2) * 0.01;
+  const outer = outerDimensions(design.size, design.thickness, design.orientation, design.frame);
+  const outerWidth = outer.widthM * calibrationFactor;
+  const outerHeight = outer.heightM * calibrationFactor;
+  const sideWidth = Math.max((outerWidth - dimensions.widthM) / 2, 0.004);
+  const topHeight = Math.max((outerHeight - dimensions.heightM) / 2, 0.004);
+  const bodyDepth = 0.018;
+  const bodyZ = -bodyDepth / 2 - 0.001;
+  const outline = 0.004;
+  const photoZ = 0.045 * depthScale + 0.002;
+  const backingMaterial = modelId === 'standing-01' ? 'frame-gallery-black' : 'frame-classic-white';
+
+  return (
+    <ViroNode position={[0, 0, 0.012]}>
+      {(!modelLoaded || !photoLoaded) && <ViroSpinner type="Light" position={[0, 0, photoZ + 0.004]} scale={[0.22, 0.22, 0.22]} />}
+      <ViroNode rotation={[0, 0, portrait ? 0 : -90]}>
+        <Viro3DObject
+          source={asset.source}
+          type="GLB"
+          position={[0, -asset.openingCenterY * heightScale, 0]}
+          rotation={[0, -90, 0]}
+          scale={[depthScale, heightScale, widthScale]}
+          onLoadStart={() => setModelLoaded(false)}
+          onLoadEnd={() => setModelLoaded(true)}
+          onError={(event) => {
+            console.warn(`No se pudo cargar ${modelId}`, event);
+            setModelLoaded(true);
+          }}
+        />
+      </ViroNode>
+      <ViroBox width={outerWidth} height={topHeight} length={bodyDepth} position={[0, dimensions.heightM / 2 + topHeight / 2, bodyZ]} materials={[backingMaterial]} />
+      <ViroBox width={outerWidth} height={topHeight} length={bodyDepth} position={[0, -dimensions.heightM / 2 - topHeight / 2, bodyZ]} materials={[backingMaterial]} />
+      <ViroBox width={sideWidth} height={dimensions.heightM} length={bodyDepth} position={[-dimensions.widthM / 2 - sideWidth / 2, 0, bodyZ]} materials={[backingMaterial]} />
+      <ViroBox width={sideWidth} height={dimensions.heightM} length={bodyDepth} position={[dimensions.widthM / 2 + sideWidth / 2, 0, bodyZ]} materials={[backingMaterial]} />
+      <ViroBox
+        width={outerWidth}
+        height={outerHeight}
+        length={0.003}
+        position={[0, 0, bodyZ - bodyDepth / 2 - 0.0015]}
+        materials={[backingMaterial]}
+      />
+      <ViroImage
+        opacity={modelLoaded && photoLoaded ? 1 : 0}
+        position={[0, 0, photoZ]}
+        source={{ uri: design.photoUri }}
+        width={dimensions.widthM}
+        height={dimensions.heightM}
+        resizeMode={design.fit === 'cover' ? 'ScaleToFill' : 'ScaleToFit'}
+        imageClipMode="ClipToBounds"
+        onLoadStart={() => setPhotoLoaded(false)}
+        onLoadEnd={() => setPhotoLoaded(true)}
+        onError={() => setPhotoLoaded(true)}
+      />
+      {modelLoaded && photoLoaded && selected && <>
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, outerHeight / 2 + outline / 2, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, -outerHeight / 2 - outline / 2, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[-outerWidth / 2 - outline / 2, 0, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[outerWidth / 2 + outline / 2, 0, photoZ + 0.002]} materials={['selection-outline']} />
+      </>}
+    </ViroNode>
+  );
+}
+
+const FANCY_MODEL = {
+  openingWidth: 0.53937429189682,
+  openingHeight: 0.40028803050518036,
+};
+
+function FancyFrameGeometry({ calibrationFactor, design, dimensions, selected }: { calibrationFactor: number; design: FrameDesign; dimensions: { widthM: number; heightM: number }; selected: boolean }) {
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
+  const portrait = design.orientation === 'portrait';
+  const scaleX = portrait ? dimensions.heightM / FANCY_MODEL.openingWidth : dimensions.widthM / FANCY_MODEL.openingWidth;
+  const scaleY = portrait ? dimensions.widthM / FANCY_MODEL.openingHeight : dimensions.heightM / FANCY_MODEL.openingHeight;
+  const scaleZ = (scaleX + scaleY) / 2;
+  const outer = outerDimensions(design.size, design.thickness, design.orientation, design.frame);
+  const outerWidth = outer.widthM * calibrationFactor;
+  const outerHeight = outer.heightM * calibrationFactor;
+  const outline = 0.004;
+  const photoZ = 0.023 * scaleZ + 0.001;
+
+  return (
+    <ViroNode position={[0, 0, 0.012]}>
+      {(!modelLoaded || !photoLoaded) && <ViroSpinner type="Light" position={[0, 0, photoZ + 0.004]} scale={[0.22, 0.22, 0.22]} />}
+      <Viro3DObject
+        source={fancyFrameModel}
+        type="GLB"
+        rotation={[0, 0, portrait ? 90 : 0]}
+        scale={[scaleX, scaleY, scaleZ]}
+        onLoadStart={() => setModelLoaded(false)}
+        onLoadEnd={() => setModelLoaded(true)}
+        onError={(event) => {
+          console.warn('No se pudo cargar fancy-textured.glb', event);
+          setModelLoaded(true);
+        }}
+      />
+      <ViroImage
+        opacity={modelLoaded && photoLoaded ? 1 : 0}
+        position={[0, 0, photoZ]}
+        source={{ uri: design.photoUri }}
+        width={dimensions.widthM}
+        height={dimensions.heightM}
+        resizeMode={design.fit === 'cover' ? 'ScaleToFill' : 'ScaleToFit'}
+        imageClipMode="ClipToBounds"
+        onLoadStart={() => setPhotoLoaded(false)}
+        onLoadEnd={() => setPhotoLoaded(true)}
+        onError={() => setPhotoLoaded(true)}
+      />
+      {modelLoaded && photoLoaded && selected && <>
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, outerHeight / 2 + outline / 2, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outerWidth + outline * 2} height={outline} length={0.004} position={[0, -outerHeight / 2 - outline / 2, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[-outerWidth / 2 - outline / 2, 0, photoZ + 0.002]} materials={['selection-outline']} />
+        <ViroBox width={outline} height={outerHeight} length={0.004} position={[outerWidth / 2 + outline / 2, 0, photoZ + 0.002]} materials={['selection-outline']} />
       </>}
     </ViroNode>
   );

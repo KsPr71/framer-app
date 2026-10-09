@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ARGate } from '@/features/framing/ar-gate';
@@ -29,13 +29,27 @@ export default function HomeScreen() {
   const [showCalibration, setShowCalibration] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [calibrationFactor, setCalibrationFactor] = useState(1);
+  const [settingsTranslateY] = useState(() => new Animated.Value(520));
+
+  useEffect(() => {
+    if (!showSettings) return;
+    settingsTranslateY.setValue(520);
+    const animation = Animated.timing(settingsTranslateY, {
+      toValue: 0,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [settingsTranslateY, showSettings]);
 
   const activeDesign = designs[activeIndex];
   const photoUri = activeDesign?.photoUri;
   const frame = FRAME_PRESETS.find((item) => item.id === frameId) ?? FRAME_PRESETS[0];
   const size = SIZE_PRESETS.find((item) => item.id === sizeId) ?? SIZE_PRESETS[0];
   const thickness = FRAME_THICKNESS_PRESETS.find((item) => item.id === thicknessId) ?? FRAME_THICKNESS_PRESETS[0];
-  const outer = useMemo(() => outerDimensions(size, thickness, orientation), [orientation, size, thickness]);
+  const outer = useMemo(() => outerDimensions(size, thickness, orientation, frame), [frame, orientation, size, thickness]);
 
   const saveCalibration = (factor: number) => {
     setCalibrationFactor(factor);
@@ -145,11 +159,15 @@ export default function HomeScreen() {
             </ScrollView>
           </Section>
 
-          <Section title="Grosor del marco">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-              {FRAME_THICKNESS_PRESETS.map((item) => <Option key={item.id} selected={item.id === thicknessId} label={item.label} onPress={() => { setThicknessIdState(item.id); patchActive({ thickness: item }); }} />)}
-            </ScrollView>
-          </Section>
+          {frame.model ? (
+            <View style={styles.modelNotice}><Text style={styles.modelNoticeTitle}>Marco 3D con grosor propio</Text><Text style={styles.modelNoticeText}>Este modelo conserva la profundidad y proporción de su diseño original.</Text></View>
+          ) : (
+            <Section title="Grosor del marco">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+                {FRAME_THICKNESS_PRESETS.map((item) => <Option key={item.id} selected={item.id === thicknessId} label={item.label} onPress={() => { setThicknessIdState(item.id); patchActive({ thickness: item }); }} />)}
+              </ScrollView>
+            </Section>
+          )}
 
           <Section title="Tamaño de la foto">
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -164,7 +182,7 @@ export default function HomeScreen() {
 
           <View style={styles.measureCard}>
             <View><Text style={styles.measureLabel}>Medida exterior aproximada</Text><Text style={styles.measureValue}>{formatInches(outer.widthM)} × {formatInches(outer.heightM)} in</Text></View>
-            <Text style={styles.measureNote}>La foto conserva la medida elegida; el grosor se suma alrededor.</Text>
+            <Text style={styles.measureNote}>{frame.model ? 'La foto conserva la medida elegida; el marco 3D usa su proporción exterior propia.' : 'La foto conserva la medida elegida; el grosor se suma alrededor.'}</Text>
           </View>
 
           <Pressable accessibilityRole="button" disabled={!designs.length} onPress={() => setShowAR(true)} style={({ pressed }) => [styles.arButton, !designs.length && styles.arButtonDisabled, pressed && styles.pressed]}>
@@ -174,9 +192,10 @@ export default function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <Modal animationType="slide" transparent visible={showSettings} onRequestClose={() => setShowSettings(false)}>
+      <Modal animationType="fade" transparent visible={showSettings} onRequestClose={() => setShowSettings(false)}>
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.settingsSheet}>
+          <Animated.View style={[styles.settingsSheetMotion, { transform: [{ translateY: settingsTranslateY }] }]}>
+            <SafeAreaView style={styles.settingsSheet}>
             <View style={styles.settingsHeader}><View><Text style={styles.settingsEyebrow}>FRAMEART</Text><Text style={styles.settingsTitle}>Ajustes</Text></View><Pressable onPress={() => setShowSettings(false)} style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable></View>
             <View style={styles.calibrationCard}>
               <View style={styles.calibrationTop}><View style={styles.calibrationIcon}><Text style={styles.calibrationIconText}>▦</Text></View><View style={styles.calibrationCopy}><Text style={styles.calibrationTitle}>Calibración de escala</Text><Text style={styles.calibrationStatus}>{calibrationFactor === 1 ? 'Sin ajuste' : `Factor aplicado: ${Math.round(calibrationFactor * 100)}%`}</Text></View></View>
@@ -184,7 +203,8 @@ export default function HomeScreen() {
               <Pressable onPress={() => { setShowSettings(false); setShowCalibration(true); }} style={styles.calibrateButton}><Text style={styles.calibrateText}>{calibrationFactor === 1 ? 'Iniciar calibración' : 'Calibrar nuevamente'}</Text></Pressable>
               {calibrationFactor !== 1 && <Pressable onPress={() => saveCalibration(1)} style={styles.resetCalibration}><Text style={styles.resetCalibrationText}>Restablecer a 100%</Text></Pressable>}
             </View>
-          </SafeAreaView>
+            </SafeAreaView>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -211,8 +231,10 @@ const styles = StyleSheet.create({
   section: { gap: 10 }, compactSection: { flex: 1 }, sectionTitle: { color: '#29231E', fontSize: 15, fontWeight: '800' }, row: { gap: 9 },
   photoRow: { gap: 10, paddingVertical: 3 }, photoCard: { padding: 3, borderWidth: 2, borderColor: 'transparent', borderRadius: 13 }, photoCardSelected: { borderColor: '#EC0AAF', backgroundColor: '#FCE4F6' }, thumbnail: { width: 64, height: 76, borderRadius: 9 }, photoNumber: { position: 'absolute', left: 5, bottom: 5, minWidth: 21, height: 21, borderRadius: 11, textAlign: 'center', lineHeight: 21, color: '#FFF', backgroundColor: 'rgba(0,0,0,0.72)', fontWeight: '800', fontSize: 11 }, removeButton: { position: 'absolute', right: -6, top: -7, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#171719' }, removeText: { color: '#FFF', fontSize: 18, lineHeight: 20 }, queueHint: { color: '#756E66', fontSize: 12 },
   option: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: '#DED9DF', backgroundColor: '#FFF' }, optionSelected: { borderColor: '#EC0AAF', backgroundColor: '#FCE4F6' }, optionText: { color: '#625D64', fontSize: 13, fontWeight: '700' }, optionTextSelected: { color: '#A00778' }, swatch: { width: 18, height: 18, borderRadius: 5, borderWidth: 2 },
+  modelNotice: { padding: 14, gap: 3, borderRadius: 16, borderWidth: 1, borderColor: '#DEC994', backgroundColor: '#FFF9E9' }, modelNoticeTitle: { color: '#5E4318', fontSize: 14, fontWeight: '900' }, modelNoticeText: { color: '#786641', fontSize: 12, lineHeight: 17 },
   twoColumns: { flexDirection: 'row', gap: 12 }, segmented: { flexDirection: 'row', padding: 3, borderRadius: 13, backgroundColor: '#E9E5DE' }, segment: { flex: 1, paddingVertical: 9, paddingHorizontal: 8, alignItems: 'center', borderRadius: 10 }, segmentSelected: { backgroundColor: '#FFF' }, segmentText: { color: '#756E66', fontSize: 12, fontWeight: '700' }, segmentTextSelected: { color: '#332B25' },
   measureCard: { padding: 17, gap: 12, borderRadius: 18, backgroundColor: '#1D1D20' }, measureLabel: { color: '#CFCAD0', fontSize: 12, fontWeight: '600' }, measureValue: { color: '#FFF', fontSize: 23, fontWeight: '900', marginTop: 2 }, measureNote: { color: '#BDB7BF', fontSize: 12, lineHeight: 17 },
   arButton: { minHeight: 62, borderRadius: 18, backgroundColor: '#171719', alignItems: 'center', justifyContent: 'center', gap: 2, borderWidth: 2, borderColor: '#EC0AAF' }, arButtonDisabled: { backgroundColor: '#AAA5AB', borderColor: '#AAA5AB' }, arButtonText: { color: '#FFF', fontSize: 16, fontWeight: '900' }, arButtonHint: { color: 'rgba(255,255,255,0.76)', fontSize: 11, fontWeight: '600' },
+  settingsSheetMotion: { width: '100%' },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10,10,12,0.45)' }, settingsSheet: { padding: 22, paddingBottom: 38, gap: 22, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: '#FFF' }, settingsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, settingsEyebrow: { color: '#EC0AAF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }, settingsTitle: { color: '#171719', fontSize: 30, fontWeight: '900' }, closeButton: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EEF2' }, closeText: { color: '#171719', fontSize: 26 }, calibrationCard: { padding: 18, gap: 14, borderRadius: 22, backgroundColor: '#F7F4F7', borderWidth: 1, borderColor: '#E8E2E9' }, calibrationTop: { flexDirection: 'row', gap: 12, alignItems: 'center' }, calibrationIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF' }, calibrationIconText: { color: '#FFF', fontSize: 25, fontWeight: '900' }, calibrationCopy: { flex: 1 }, calibrationTitle: { color: '#171719', fontSize: 17, fontWeight: '900' }, calibrationStatus: { color: '#8B858D', fontSize: 12, marginTop: 2 }, calibrationBody: { color: '#625D64', fontSize: 14, lineHeight: 21 }, calibrateButton: { minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EC0AAF' }, calibrateText: { color: '#FFF', fontWeight: '900' }, resetCalibration: { minHeight: 42, alignItems: 'center', justifyContent: 'center' }, resetCalibrationText: { color: '#8B1470', fontWeight: '800' },
 });
